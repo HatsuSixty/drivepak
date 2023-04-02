@@ -1,0 +1,93 @@
+#!/bin/env python3
+
+from os import listdir, makedirs as mkdir, remove
+from os.path import isfile, isdir
+from shlex import join
+from subprocess import run
+from sys import argv, stderr, stdout
+
+# EXTERNAL HARD DRIVE PATH, change if you want, too lazy to add an option for that
+EXTERNAL_HD_PATH = "/media/roberto/HomePartition"
+HOME = "/home/" + listdir("/home")[0]
+
+def run_cmd(command):
+    print(f"[CMD] {join(command)}")
+    run(command)
+
+def mkdir_ine(dirr) -> bool:
+    existed = False
+    try:
+        print(f"[INFO] Creating directory `{dirr}`...")
+        if not isdir(dirr):
+            mkdir(dirr)
+        else:
+            existed = True
+    except Exception as e:
+        print(f"ERROR: Python error: {e}")
+        exit(1)
+    return existed
+
+def mkfile(filee, content):
+    try:
+        print(f"[INFO] Creating file `{filee}`")
+        if isfile(filee):
+            remove(filee)
+        with open(filee, "w") as f:
+            print(content, file=f)
+    except Exception as e:
+        print(f"ERROR: Python error: {e}")
+        exit(1)
+
+def usage(myself, stream):
+    print(f"USAGE: {myself} <SUBCOMMAND> [FLATPAK_SUBCOMMAND]", file=stream)
+    print("  SUBCOMMANDs:", file=stream)
+    print("    system     Install app to system", file=stream)
+    print("    external   Install to external drive", file=stream)
+    print("    help       Prints this help", file=stream)
+    print("  FLATPAK_SUBCOMMAND: It will be passed as a subcommand to `flatpak`", file=stream)
+
+if __name__ == '__main__':
+    external_hd_path = ""
+    try:
+        with open(f"{HOME}/.config/drivepak_external_hd", "r") as f:
+            external_hd_path = f.read().strip()
+    except:
+        external_hd_path = EXTERNAL_HD_PATH
+
+    if len(argv) < 2:
+        print("ERROR: No subcommand was provided", file=stderr)
+        usage(argv[0], stderr)
+        exit(1)
+
+    subcommand = argv[1]
+    if subcommand in ["system", "external"]:
+        system = True if subcommand == "system" else False
+        if len(argv) < 3:
+            print("ERROR: No subcommand was provided for flatpak")
+            usage(argv[0], stderr)
+            exit(1)
+
+        flatpak_subcommand = argv[2]
+
+        mkdir_ine("/etc/flatpak/installations.d")
+
+        mkfile("/etc/flatpak/installations.d/extra.conf", f"""[Installation "extra"]
+Path={external_hd_path}/Flatpak
+DisplayName=External Installation
+StorageType=harddisk""")
+
+        # mkdir_ine returns if the directory already existed
+        if not mkdir_ine(f"{external_hd_path}/Flatpak"):
+            run_cmd(["flatpak", "--installation=extra", "remote-add", "flathub", "https://flathub.org/repo/flathub.flatpakrepo"])
+
+        if system:
+            run_cmd(["flatpak", flatpak_subcommand] + argv[3:])
+        else:
+            run_cmd(["flatpak", flatpak_subcommand, "--installation=extra"] + argv[3:])
+    elif subcommand == "help":
+        usage(argv[0], stdout)
+        exit(0)
+    else:
+        print(f"ERROR: Unknown subcommand: `{subcommand}`", file=stderr)
+        usage(argv[0], stderr)
+        exit(1)
